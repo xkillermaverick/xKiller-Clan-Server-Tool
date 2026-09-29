@@ -25,14 +25,26 @@
 
 The xKiller Clan Server Tool is a **Windows-native game server management application** for the xKiller Clan. It runs in the system tray, monitors and controls game servers, integrates with Discord, and connects to `engine.xkillerclan.com` for authentication, updates, and achievement sync. All engine-dependent features must degrade gracefully offline — core server control works with no internet connection.
 
-**Target distribution:** Microsoft Store (MSIX packaged) + direct sideload installer. The developer account is already registered.
-
-**Windows compatibility target:**
-- **Windows 11** — primary target; WinUI 3 / Windows App SDK, full Fluent Design
-- **Windows 10** — fully supported; WinUI 3 runs on Win10 1809+
-- **Windows 7** — best-effort via a legacy WinForms UI variant (see Phase 6)
+**Windows compatibility target:** Windows 7 and above. Both UI variants run on Windows 7, 8, 10, and 11. The user chooses which UI they prefer — the OS does not decide for them.
 
 The **xKiller Palworld Server Manager** is archived. Its ideas are being reimplemented from scratch in C# — no original code is being reused. Credits for inspiration are noted in the About page (see Phase 7).
+
+---
+
+## Distribution Model
+
+Two separate editions. They share the same backend engines and JSON config format — user settings carry over between them.
+
+| | Store Edition | Standalone Edition |
+|---|---|---|
+| **UI** | Modern (WinUI 3) only | User's choice: Modern or Legacy |
+| **Updater** | Microsoft Store handles updates automatically | Built-in auto-updater via engine.xkillerclan.com + GitHub releases |
+| **Windows support** | Windows 10 1809+ and Windows 11 | Windows 7 and above |
+| **Distribution** | Microsoft Store | GitHub releases + xkillerclan.com direct download |
+| **Format** | MSIX (Store requirement) | Standalone installer |
+| **Config compatibility** | Same JSON format | Same JSON format |
+
+**Key rule:** The Store Edition has no built-in updater — Microsoft Store handles that automatically. Adding a custom updater to the Store Edition would conflict with Store policies and is unnecessary. The Standalone Edition keeps its full auto-updater.
 
 ---
 
@@ -55,7 +67,7 @@ For every screen, engine, background task, config value, and data file in v1:
 |---|---|---|---|
 | Windows Service start/stop/restart | `ServerToolEngine.vb` | `ServerEngine` | Rewrite |
 | Process-based server control | `ServerToolEngine.vb` | `ServerEngine` | Rewrite |
-| System tray + balloon tips | `frmServerToolMain.vb` | `NotificationEngine` | Rewrite (upgrade to Toast) |
+| System tray + balloon tips | `frmServerToolMain.vb` | `NotificationEngine` | Rewrite (upgrade to Toast on Win10/11) |
 | Registry startup control | `ServerToolEngine.vb` | `CoreEngine` | Rewrite |
 | INI-based settings | `SettingEngine.vb` | `SettingsEngine` | Rewrite (replace with JSON) |
 | Guest vs. account gating | `frmServerToolMain.vb` | `EngineConnector` + role system | Rewrite |
@@ -69,7 +81,7 @@ For every screen, engine, background task, config value, and data file in v1:
 
 ### 0.2 Palworld Manager — Ideas Adopted `[PLANNED]`
 
-The archived xKiller Palworld Server Manager is the inspiration source for the following features. All are being **reimplemented from scratch in C#** — no original Python code is being reused. The MIT license of the original repo does not apply to a clean reimplementation of ideas. Credits appear on the About page.
+The archived xKiller Palworld Server Manager is the inspiration source for the following features. All are being **reimplemented from scratch in C#** — no original Python code is being reused. Credits appear on the About page.
 
 | Feature | v2 Destination |
 |---|---|
@@ -89,10 +101,10 @@ The archived xKiller Palworld Server Manager is the inspiration source for the f
 
 | Engine | Responsibility |
 |---|---|
-| `CoreEngine` | App lifecycle, startup, mode detection, settings load, update check |
+| `CoreEngine` | App lifecycle, startup, UI mode selection, settings load, update check (Standalone only) |
 | `ServerEngine` | Multi-server process and service control, crash detection, auto-restart, configurable retry |
 | `DiscordEngine` | Integrated Discord bot + webhook notifications |
-| `NotificationEngine` | Windows 11 Toast Notifications; email notifications; tray notifications |
+| `NotificationEngine` | Toast Notifications (Win10/11); balloon tips (Win7/8); email notifications; tray notifications |
 | `AchievementEngine` | Achievement tracking, unlock logic, sync to backend |
 | `DiagnosticsEngine` | Structured logging with severity levels; all 49 v1 error codes carried forward |
 | `SettingsEngine` | JSON server profiles, settings editor UI, INI migration |
@@ -111,6 +123,7 @@ Each engine is independently testable. A failing optional engine must not crash 
 - Each profile: name, type (process or service), executable or service name, autoRestart, maxRestartAttempts, restartDelaySeconds
 - Migration converts existing INI settings without data loss
 - Rollback available if migration fails
+- **Config format is identical across Store Edition, Standalone Edition, Modern UI, and Legacy UI** — settings carry over freely between all of them
 
 ### 1.4 Role System `[REWRITE]`
 
@@ -123,8 +136,10 @@ Each engine is independently testable. A failing optional engine must not crash 
 
 Roles sync with Discord roles via `EngineConnector`. Role sync failure must not prevent basic server control.
 
-### 1.5 Auto-Updater `[REWRITE]`
-- Check for updates via `engine.xkillerclan.com`
+### 1.5 Auto-Updater `[REWRITE]` — Standalone Edition Only
+
+- Standalone Edition only — the Store Edition does not include an updater (Microsoft Store handles it)
+- Check for updates via `engine.xkillerclan.com` and GitHub releases
 - Replace only changed files (diff-based), not a full reinstall
 - User-initiated manual check in addition to automatic detection
 - User settings kept outside core files so updates never overwrite configuration
@@ -133,13 +148,9 @@ Roles sync with Discord roles via `EngineConnector`. Role sync failure must not 
 
 ## Phase 2 — Packaging and Windows Compatibility
 
-### 2.1 MSIX Packaging and Microsoft Store `[NEW]`
+### 2.1 MSIX Packaging — Store Edition `[NEW]`
 
-The app is distributed as an MSIX package — the required format for Microsoft Store submission. The developer account is already registered.
-
-**Two distribution paths:**
-- **Microsoft Store** — submitted for certification when the app is ready
-- **Direct sideload** — MSIX installer hosted on xkillerclan.com for users who prefer not to use the Store
+The Store Edition is distributed as an MSIX package — the required format for Microsoft Store submission. The developer account is already registered.
 
 **Microsoft Store certification notes — known flag areas:**
 
@@ -149,28 +160,46 @@ The app is distributed as an MSIX package — the required format for Microsoft 
 | Process launch/terminate | For servers that run as executables, not services | Same — `runFullTrust` covers this |
 | Registry write (startup) | Run on boot option | Declare restricted capability; document it is user-initiated and opt-in |
 | Elevated privileges | Some server operations require admin rights | Request elevation only for specific actions — never run the whole app elevated; drop back to standard after the action completes |
-| Network access | Engine connectivity, Discord bot, update check | Standard `internetClient` + `internetClientServer` capabilities |
+| Network access | Engine connectivity, Discord bot | Standard `internetClient` + `internetClientServer` capabilities |
 
 **Key certification rule:** The app must request elevation only when needed for a specific action, not run as administrator by default. Design all admin-required operations as explicit, user-triggered actions that elevate, complete, and drop back.
 
 ### 2.2 Windows Version Compatibility `[NEW]`
 
-| Windows Version | UI Layer | Status |
-|---|---|---|
-| Windows 11 | WinUI 3 / Windows App SDK — Mica, Fluent Design, Toast | Primary target |
-| Windows 10 (1809+) | WinUI 3 — same codebase, Acrylic where Mica unavailable | Fully supported |
-| Windows 7 | WinForms legacy UI variant | Best-effort (see Phase 6) |
+Both UI variants support Windows 7 and above. The user chooses their preferred UI — the OS does not decide for them. On Windows 7 and 8, some features are unavailable and clearly labeled; there are no silent failures.
 
-**Runtime detection:** On startup, `CoreEngine` detects the Windows version and launches the appropriate UI variant. The user can also manually switch between the modern (WinUI 3) and legacy (WinForms) UI from settings.
+| Windows Version | Modern UI (WinUI 3) | Legacy UI (WinForms) |
+|---|---|---|
+| Windows 11 | ✅ Full support — Mica, Fluent Design, Toast | ✅ Full support |
+| Windows 10 (1809+) | ✅ Full support — Acrylic where Mica unavailable | ✅ Full support |
+| Windows 8 / 8.1 | ❌ Not supported (WinUI 3 requires Win10) | ✅ Best-effort support |
+| Windows 7 | ❌ Not supported (WinUI 3 requires Win10) | ✅ Best-effort support |
 
 ### 2.3 Dual UI — Modern and Legacy `[NEW]`
 
-Both UI variants connect to the same backend engines. Switching UI does not restart the engines or lose server state.
+Both UI variants connect to the same backend engines. Switching UI does not restart the engines or lose server state. The user can switch at any time from within the settings.
 
-- **Modern UI (WinUI 3):** Full Fluent Design, Mica/Acrylic, Toast notifications, Snap layout awareness — Windows 10/11
-- **Legacy UI (WinForms):** Functional, clean, no Fluent Design dependencies — Windows 7 compatible
-- **Communication between variants:** Both variants read/write the same JSON config and engine state. If a user runs the legacy variant on one machine and the modern variant on another (e.g. managing the same server from two PCs), they stay in sync through the shared config and engine backend
-- **Switch without restart:** The user can toggle between modern and legacy UI from within the app — engines keep running, no data lost
+**Modern UI (WinUI 3) — Windows 10/11:**
+- Full Fluent Design, Mica/Acrylic backgrounds
+- Toast Notifications with images, buttons, and progress bars
+- Snap layout awareness
+- Light/dark mode synced to OS theme
+- Rounded corners, Fluent Design icons
+
+**Legacy UI (WinForms) — Windows 7 and above including Windows 10/11:**
+- Clean, functional interface — no Fluent Design dependencies
+- System tray + balloon tip notifications (Toast not available on Win7/8)
+- All core server control features fully available
+- Same JSON config as the modern variant — settings carry over
+- Available on all Windows versions including those that cannot run WinUI 3
+
+**Cross-machine sync:** A user running Legacy UI on one machine and Modern UI on another (e.g. Windows 7 server room PC + Windows 11 desktop) see the same server status and can both trigger actions — subject to role permissions — through the shared engine backend.
+
+**Features unavailable on Windows 7/8 (clearly labeled, no silent failures):**
+- WinUI 3 / Mica / Acrylic — not available
+- Toast Notifications — balloon tips used instead
+- Microsoft Store Edition — sideload/GitHub only
+- Some .NET 8+ APIs — legacy variant targets .NET Framework 4.8 for maximum Win7 compatibility
 
 ---
 
@@ -193,7 +222,7 @@ Automated channel notifications:
 - Crash detected + auto-restart triggered
 - Player milestones
 - Achievement unlocks
-- Update available
+- Update available (Standalone Edition only)
 - Scheduled restart warnings (with countdown)
 
 Discord role sync maps Discord roles to the internal role system.
@@ -234,43 +263,14 @@ Achievements sync to `engine.xkillerclan.com`. If the engine is unreachable, ach
 
 ---
 
-## Phase 6 — Windows 7 Legacy Support
+## Phase 6 — About Page and Credits
 
-### 6.1 WinForms Legacy UI `[NEW]`
-
-Windows 7 cannot run WinUI 3 or the Windows App SDK. A WinForms-based UI variant provides best-effort support:
-
-- All core server control features available (start/stop/restart, crash detection, auto-restart)
-- System tray support — WinForms tray is natively compatible with Windows 7
-- Balloon tip notifications (Toast not available on Win7)
-- JSON config compatibility — same profiles as the modern variant
-- Discord bot and engine connectivity work if .NET version supports it on Win7
-- Features that are technically impossible on Win7 are clearly labeled as unavailable — no silent failures
-
-**Known Win7 limitations to document:**
-- WinUI 3 / Mica / Acrylic — not available
-- Toast Notifications — not available (balloon tips used instead)
-- Microsoft Store distribution — not applicable; sideload only
-- Some .NET 8+ APIs may not be available — the legacy variant targets the highest .NET version compatible with Windows 7 (.NET Framework 4.8 or .NET 6 with compatibility shims)
-
-### 6.2 Cross-Variant Communication `[NEW]`
-
-The modern (WinUI 3) and legacy (WinForms) variants can run on different machines managing the same server infrastructure:
-
-- Both variants read/write the same JSON config format
-- Engine state is shared through `engine.xkillerclan.com` when online
-- A user on Windows 7 (legacy UI) and a user on Windows 11 (modern UI) see the same server status and can both trigger actions — subject to their role permissions
-- Offline: each variant operates independently; state reconciles when the engine connection is restored
-
----
-
-## Phase 7 — About Page and Credits
-
-### 7.1 About Page `[NEW]`
+### 6.1 About Page `[NEW]`
 
 The About page documents the tool's history, version, and credits:
 
 - App name, version, and build date
+- Edition indicator: Store Edition or Standalone Edition
 - Owner: xKillerMaverick / xKiller Clan
 - Link to xkillerclan.com
 - Credits section acknowledging inspirations:
@@ -291,7 +291,9 @@ The About page documents the tool's history, version, and credits:
 - Elevation: request admin rights only for specific actions — never run the whole app elevated
 - Items marked `[RESEARCH PENDING]` must not be implemented until research is complete and documented
 - Do not remove any v1 behavior without owner approval and a documented migration path
-- Legacy (WinForms) and modern (WinUI 3) variants must stay in sync on config format — never let them diverge
+- Legacy (WinForms) and modern (WinUI 3) variants must stay in sync on JSON config format — never let them diverge
+- Store Edition must never include a custom updater — Microsoft Store handles updates for that edition
+- Win7 unavailable features must be clearly labeled in the UI — no silent failures, no crashes
 
 ---
 
